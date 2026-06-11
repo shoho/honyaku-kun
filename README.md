@@ -45,6 +45,16 @@ js/
 
 ブラウザの WebSocket はカスタムヘッダーを付けられないため、Live API への接続のみ `?key=` クエリでキーを渡します（Google 公式のクライアント直結パターン）。REST はキーを `x-goog-api-key` ヘッダーで送ります。
 
+## 開発
+
+ランタイム依存はゼロですが、テストに Vitest を使います:
+
+```sh
+npm install
+npm test        # 単体テスト（実ネットワークなし）
+npm run dev     # http://localhost:8000
+```
+
 ## License
 
 MIT

@@ -1,0 +1,15 @@
+{
+  "name": "honyaku-kun",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "リアルタイム同時通訳ウェブアプリ（Gemini Live + Flash / 静的サイト）",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}
