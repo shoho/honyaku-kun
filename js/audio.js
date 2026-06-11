@@ -89,8 +89,30 @@ export class AudioPipeline {
       this.ctx = new AudioContext();
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
-    // サブパス配信（GitHub Pages 等）でも解決できるよう相対 URL で読み込む
-    await this.ctx.audioWorklet.addModule(new URL("./pcm-worklet.js", import.meta.url));
+    await this._loadWorklet();
+  }
+
+  async _loadWorklet() {
+    // 単一ファイルビルド（build.mjs）ではワークレットのソースが埋め込まれている。
+    // origin が null になる配信環境（sandbox iframe / CSP sandbox）では相対 URL の
+    // addModule が CORS で弾かれるため、Blob / data URL 経由で読み込む
+    const inline = globalThis.__PCM_WORKLET_SOURCE__;
+    if (!inline) {
+      // サブパス配信（GitHub Pages 等）でも解決できるよう相対 URL で読み込む
+      await this.ctx.audioWorklet.addModule(new URL("./pcm-worklet.js", import.meta.url));
+      return;
+    }
+    const blobUrl = URL.createObjectURL(new Blob([inline], { type: "text/javascript" }));
+    try {
+      await this.ctx.audioWorklet.addModule(blobUrl);
+    } catch {
+      // 一部環境は opaque origin の blob: 取得を拒否するため data: にフォールバック
+      await this.ctx.audioWorklet.addModule(
+        "data:text/javascript;charset=utf-8," + encodeURIComponent(inline)
+      );
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
   }
 
   async stop() {
