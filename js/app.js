@@ -126,6 +126,15 @@ function setStatus(kind, text = STATUS_TEXT[kind] ?? kind) {
   el.status.textContent = text;
 }
 
+// セッション中は設定類（API キー含む）を変更不可にする。開始/停止で対で呼ぶ
+function setControlsDisabled(disabled) {
+  el.apiKey.disabled =
+    el.target.disabled =
+    el.audioSource.disabled =
+    el.liveModel.disabled =
+      disabled;
+}
+
 async function startSession() {
   const apiKey = currentApiKey();
   if (!apiKey) {
@@ -147,8 +156,7 @@ async function startSession() {
   el.finalizeBtn.hidden = true;
   el.micBtn.setAttribute("aria-pressed", "true");
   el.micLabel.textContent = "Stop";
-  el.target.disabled = el.audioSource.disabled = el.liveModel.disabled = true;
-  el.apiKey.disabled = true;
+  setControlsDisabled(true);
 
   // ③ 要約スケジューラ（約1分ごとに要約全体を更新 — タイミングは Summarizer が所有）
   state.summarizer = new Summarizer({
@@ -229,8 +237,7 @@ async function stopSession() {
   state.running = false;
   el.micBtn.setAttribute("aria-pressed", "false");
   el.micLabel.textContent = startLabel();
-  el.target.disabled = el.audioSource.disabled = el.liveModel.disabled = false;
-  el.apiKey.disabled = false;
+  setControlsDisabled(false);
   releaseWakeLock();
 
   try { await state.audio?.stop(); } catch {}
@@ -307,16 +314,12 @@ function autoscroll(node) {
 
 el.finalizeBtn.addEventListener("click", async () => {
   if (!state.fullTranslation.trim()) return;
-  const apiKey = state.apiKey || currentApiKey();
-  if (!apiKey) {
-    setStatus("error", "Enter your Gemini API key first");
-    return;
-  }
   el.finalizeBtn.disabled = true;
   el.finalizeBtn.textContent = "Generating…";
   try {
+    // state.apiKey はこのボタンが見える時点で必ず設定済み（startSession で固定）
     const sections = await finalizeMinutes({
-      apiKey,
+      apiKey: state.apiKey,
       targetName: LANG_NAMES[state.targetLang],
       sections: state.lastSections,
       transcript: state.fullTranslation,

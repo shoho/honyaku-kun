@@ -30,6 +30,20 @@ function formatMinutes(sections) {
     .join("\n");
 }
 
+// ライブ更新・最終版の両プロンプトで完全に同一のルール（話者の言い間違い・
+// 不明瞭箇所の扱い）。文言を直すときに片方だけ直る事故を防ぐため一元化する。
+function sharedRules(target) {
+  return (
+    `- Consider that the speaker may be a non-native speaker: the transcript can contain ` +
+    `grammar mistakes, wrong word choices, false starts and self-corrections. Interpret what ` +
+    `the speaker MEANT rather than the literal wording.\n` +
+    `- If a passage is unintelligible or too ambiguous to interpret confidently, do not guess ` +
+    `or assert an interpretation: keep the unclear words as-is and append a parenthetical ` +
+    `"unclear" marker written naturally in ${target} (the equivalent of "(unclear)" in ` +
+    `that language — for example "（不明瞭）" if the minutes are in Japanese).\n`
+  );
+}
+
 // ライブ議事録の更新（約1分ごと）。現在の要約全体＋新規分を渡して全文再生成する。
 export async function updateMinutes({ apiKey, targetName, sections, transcript, source }) {
   const target = String(targetName ?? "the target language").slice(0, 60);
@@ -55,13 +69,7 @@ export async function updateMinutes({ apiKey, targetName, sections, transcript, 
     `names, decisions and announcements; drop filler, greetings and repetition.\n` +
     `- Stay faithful to what was said — never invent or speculate. Use the source transcript ` +
     `to correct translation errors.\n` +
-    `- Consider that the speaker may be a non-native speaker: the transcript can contain ` +
-    `grammar mistakes, wrong word choices, false starts and self-corrections. Interpret what ` +
-    `the speaker MEANT rather than the literal wording.\n` +
-    `- If a passage is unintelligible or too ambiguous to interpret confidently, do not guess ` +
-    `or assert an interpretation: keep the unclear words as-is and append a parenthetical ` +
-    `"unclear" marker written naturally in ${target} (the equivalent of "(unclear)" in ` +
-    `that language — for example "（不明瞭）" if the minutes are in Japanese).\n` +
+    sharedRules(target) +
     `- Do not drop information that is already in the current minutes unless it was wrong or ` +
     `is being merged into a better-phrased point.\n` +
     `- Everything must be written in ${target}.`;
@@ -101,13 +109,7 @@ export async function finalizeMinutes({ apiKey, targetName, sections, transcript
     `names, decisions and announcements; drop filler and repetition.\n` +
     `- Stay strictly faithful to the transcript — never invent or speculate. Use the source ` +
     `transcript to correct translation errors.\n` +
-    `- Consider that the speaker may be a non-native speaker: the transcript can contain ` +
-    `grammar mistakes, wrong word choices, false starts and self-corrections. Interpret what ` +
-    `the speaker MEANT rather than the literal wording.\n` +
-    `- If a passage is unintelligible or too ambiguous to interpret confidently, do not guess ` +
-    `or assert an interpretation: keep the unclear words as-is and append a parenthetical ` +
-    `"unclear" marker written naturally in ${target} (the equivalent of "(unclear)" in ` +
-    `that language — for example "（不明瞭）" if the minutes are in Japanese).\n` +
+    sharedRules(target) +
     `- Everything must be written in ${target}.`;
 
   return generateSections({
