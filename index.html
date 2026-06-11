@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>翻訳くん — Real-time Interpretation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="spark" aria-hidden="true">✳</span>
+      <h1 class="brand-title">翻訳くん</h1>
+      <span class="brand-sub">Real-time interpretation &amp; live minutes</span>
+    </div>
+
+    <div class="controls">
+      <label class="field field--key">
+        <span class="field-label">Gemini API Key</span>
+        <input
+          id="apiKey"
+          type="password"
+          placeholder="AIza…"
+          autocomplete="off"
+          spellcheck="false"
+          title="Stored only in this browser (localStorage). Sent directly to Google — no other server is involved."
+        />
+      </label>
+
+      <!-- Options are generated from LIVE_MODELS in app.js -->
+      <label class="field">
+        <span class="field-label">Model</span>
+        <select id="liveModel"></select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Audio source</span>
+        <select id="audioSource">
+          <option value="mic">Microphone</option>
+          <option value="display">Tab / video audio</option>
+        </select>
+      </label>
+
+      <div class="field">
+        <span class="field-label">Spoken language</span>
+        <span class="field-static">Auto-detect</span>
+      </div>
+
+      <span class="dir-arrow" aria-hidden="true">→</span>
+
+      <!-- Options are generated from LANGS in app.js -->
+      <label class="field">
+        <span class="field-label">Translate to</span>
+        <select id="targetLang"></select>
+      </label>
+
+      <button id="micBtn" class="mic-btn" aria-pressed="false">
+        <span class="mic-dot"></span>
+        <span class="mic-label">Start microphone</span>
+      </button>
+
+      <div id="status" class="status status--idle">Idle</div>
+    </div>
+  </header>
+
+  <main class="columns">
+    <section class="col col--original">
+      <div class="col-head">
+        <span class="col-step" aria-hidden="true">01</span>
+        <div class="col-titles">
+          <h2>Source</h2>
+          <span class="col-sub">Speech recognition · language auto-detected</span>
+        </div>
+      </div>
+      <div id="originalView" class="col-body" aria-live="polite"></div>
+    </section>
+
+    <section class="col col--translation">
+      <div class="col-head">
+        <span class="col-step" aria-hidden="true">02</span>
+        <div class="col-titles">
+          <h2>Translation</h2>
+          <span class="col-sub">Live translate</span>
+        </div>
+      </div>
+      <div id="translationView" class="col-body" aria-live="polite"></div>
+    </section>
+
+    <section class="col col--refined">
+      <div class="col-head">
+        <span class="col-step" aria-hidden="true">03</span>
+        <div class="col-titles">
+          <h2>Minutes</h2>
+          <span class="col-sub">Updated every minute</span>
+        </div>
+        <span class="col-head-right">
+          <button id="finalizeBtn" class="copy-btn copy-btn--accent" hidden>Generate final minutes</button>
+          <button id="copySummary" class="copy-btn" hidden>Copy</button>
+        </span>
+      </div>
+      <div id="refinedView" class="col-body" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
