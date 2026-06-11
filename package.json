@@ -6,10 +6,12 @@
   "description": "リアルタイム同時通訳ウェブアプリ（Gemini Live + Flash / 静的サイト）",
   "scripts": {
     "dev": "python3 -m http.server 8000",
+    "build": "node build.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "vitest": "^4.1.8"
   }
 }
