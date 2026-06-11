@@ -14,12 +14,22 @@ export class AudioPipeline {
 
   // mode: "mic" | "display"
   async start(mode = "mic") {
-    // 音声ソースの取得と AudioContext/worklet 準備は独立なので並列に
-    const [stream] = await Promise.all([
+    // 音声ソースの取得と AudioContext/worklet 準備は独立なので並列に。
+    // 片方だけ成功した場合（例: worklet ロード失敗）にマイクが掴まれたまま
+    // 残らないよう、失敗時は成功した側を後始末してから投げ直す
+    const [streamRes, ctxRes] = await Promise.allSettled([
       mode === "display" ? this._getDisplayAudio() : this._getMicAudio(),
       this._initContext(),
     ]);
-    this.stream = stream;
+    if (streamRes.status === "rejected" || ctxRes.status === "rejected") {
+      if (streamRes.status === "fulfilled") {
+        streamRes.value.getTracks().forEach((t) => t.stop());
+      }
+      await this.stop();
+      // app.js はストリーム側のエラー（NotAllowedError 等）で文言を出し分けるため優先
+      throw streamRes.status === "rejected" ? streamRes.reason : ctxRes.reason;
+    }
+    this.stream = streamRes.value;
 
     this.source = this.ctx.createMediaStreamSource(this.stream);
     this.node = new AudioWorkletNode(this.ctx, "pcm-processor");

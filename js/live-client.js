@@ -62,11 +62,12 @@ export class LiveClient {
       this.onStatus?.("idle");
       return;
     }
-    // 一度も接続が成立していない → キー不正・モデル名不正の可能性が高い。
-    // 再接続でリカバーできないので即エラーにする。
+    // 一度も接続が成立していない → キー不正・モデル名不正・回線断のいずれか
+    // （ブラウザには close code 1006 しか届かず区別できない）。
+    // 再接続でリカバーできないので即エラーにし、エラー表示を残す
+    // （ここで idle を流すと app.js の error 表示が即座に上書きされてしまう）。
     if (!this.everReady) {
-      this.onError?.(new Error("Connection failed — check your Gemini API key"));
-      this.onStatus?.("idle");
+      this.onError?.(new Error("Connection failed — check your Gemini API key and network"));
       return;
     }
     // 異常切断 → 指数バックオフで自動再接続（セッション再開ハンドル付き）
@@ -77,7 +78,6 @@ export class LiveClient {
       this._reconnectTimer = setTimeout(() => this.connect(), delay);
     } else {
       this.onError?.(new Error(`Connection lost (code ${e.code})`));
-      this.onStatus?.("idle");
     }
   }
 
