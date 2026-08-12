@@ -5,7 +5,7 @@
 - 依存ゼロ・ビルド無し・サーバー無し（vanilla HTML/CSS/JS、ESM）。静的ホスティングに置くだけで動く（sandbox 配信向けの単一ファイルビルドも用意、後述）
 - Gemini API キーは **UI から入力**し、ブラウザの localStorage にのみ保存
 - ブラウザから **Google の Gemini API を直接呼ぶ**（翻訳: Live API WebSocket 直結、議事録: REST）。他のサーバーは一切経由しない
-- 翻訳は `gemini-3.5-live-translate-preview`（Live API / BidiGenerateContent）、議事録は `gemini-3.5-flash`（structured output）
+- 翻訳は `gemini-3.5-live-translate-preview`（Live API / BidiGenerateContent）、議事録は `gemini-flash-latest`（structured output。最新 Flash を指すエイリアスで、2026-05-19 時点の実体は `gemini-3.5-flash`）
 
 ## 使い方
 
