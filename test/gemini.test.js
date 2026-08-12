@@ -119,6 +119,10 @@ describe("共通プロンプトルール", () => {
       const prompt = JSON.parse(call[1].body).contents[0].parts[0].text;
       expect(prompt).toContain("non-native speaker");
       expect(prompt).toContain("（不明瞭）");
+      // 議論の可視化ルール（論点・意見・結論のラベル付け）
+      expect(prompt).toContain("「論点: …」");
+      expect(prompt).toContain("Never present one ");
+      expect(prompt).toContain("Never invent speakers.");
       expect(prompt).toContain("Everything must be written in Japanese.");
     }
   });
