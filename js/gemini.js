@@ -4,7 +4,9 @@
 // （x-goog-api-key ヘッダー。URL クエリには載せない）。
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-export const SUMMARY_MODEL = "gemini-3.5-flash";
+// 常に最新の Flash を使うためエイリアスを指定する（2026-05-19 時点の実体は
+// gemini-3.5-flash）。エイリアスは新リリースごとに差し替わり、preview を指すこともある。
+export const SUMMARY_MODEL = "gemini-flash-latest";
 
 const MAX_TOPIC_CHARS = 120;
 const MAX_POINT_CHARS = 300;

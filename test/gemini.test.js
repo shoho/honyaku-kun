@@ -46,7 +46,7 @@ describe("updateMinutes", () => {
     expect(result).toEqual(out);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toContain("/models/gemini-3.5-flash:generateContent");
+    expect(url).toContain("/models/gemini-flash-latest:generateContent");
     expect(url).not.toContain("key="); // キーはクエリに載せない
     expect(init.headers["x-goog-api-key"]).toBe(API_KEY);
 
