@@ -33,7 +33,7 @@ function formatMinutes(sections) {
 }
 
 // ライブ更新・最終版の両プロンプトで完全に同一のルール（話者の言い間違い・
-// 不明瞭箇所の扱い）。文言を直すときに片方だけ直る事故を防ぐため一元化する。
+// 不明瞭箇所の扱い・議論の可視化）。文言を直すときに片方だけ直る事故を防ぐため一元化する。
 function sharedRules(target) {
   return (
     `- Consider that the speaker may be a non-native speaker: the transcript can contain ` +
@@ -42,7 +42,21 @@ function sharedRules(target) {
     `- If a passage is unintelligible or too ambiguous to interpret confidently, do not guess ` +
     `or assert an interpretation: keep the unclear words as-is and append a parenthetical ` +
     `"unclear" marker written naturally in ${target} (the equivalent of "(unclear)" in ` +
-    `that language — for example "（不明瞭）" if the minutes are in Japanese).\n`
+    `that language — for example "（不明瞭）" if the minutes are in Japanese).\n` +
+    `- When a topic involved an actual discussion — differing views, proposals being weighed, ` +
+    `back-and-forth — make the flow visible to a reader who was NOT present: as separate ` +
+    `bullets, state the question at issue, the main positions or options raised with their ` +
+    `reasoning, and how it ended. Prefix these bullets with short labels written in ${target} ` +
+    `(the equivalents of "Issue:", "View:", "Conclusion:" — e.g. 「論点: …」「意見: …」` +
+    `「結論: …」 if the minutes are in Japanese).\n` +
+    `- State the outcome honestly: decided, deferred, or still open. Never present one ` +
+    `participant's opinion as a decision; if no conclusion was reached, say so explicitly ` +
+    `rather than leaving the outcome ambiguous.\n` +
+    `- Attribute a view to a speaker only when the transcript itself identifies them (a name, ` +
+    `"the presenter", etc.); otherwise use neutral phrasing like "one participant". Never ` +
+    `invent speakers.\n` +
+    `- One-way explanatory passages with no discussion get plain informative bullets — do not ` +
+    `force the issue/view/conclusion structure onto them.\n`
   );
 }
 
@@ -72,6 +86,11 @@ export async function updateMinutes({ apiKey, targetName, sections, transcript, 
     `- Stay faithful to what was said — never invent or speculate. Use the source transcript ` +
     `to correct translation errors.\n` +
     sharedRules(target) +
+    `- A discussion may still be in progress: if a topic is being debated and no conclusion ` +
+    `has been reached yet, mark it with an "ongoing / not yet decided" label written in ` +
+    `${target} (e.g. 「議論中」 if the minutes are in Japanese). Replacing that marker with ` +
+    `the actual conclusion in a later update — and reorganizing the bullets around it — is ` +
+    `expected, and does not count as dropping information.\n` +
     `- Do not drop information that is already in the current minutes unless it was wrong or ` +
     `is being merged into a better-phrased point.\n` +
     `- Everything must be written in ${target}.`;
@@ -112,6 +131,14 @@ export async function finalizeMinutes({ apiKey, targetName, sections, transcript
     `- Stay strictly faithful to the transcript — never invent or speculate. Use the source ` +
     `transcript to correct translation errors.\n` +
     sharedRules(target) +
+    `- Reconstruct each discussion from the full transcript rather than copying the live ` +
+    `minutes' fragments: now that the outcome is known, present the issue, the views with ` +
+    `their reasoning, and the conclusion as a clean progression.\n` +
+    `- If the talk produced decisions, action items or open questions, end with one dedicated ` +
+    `section (titled in ${target}) listing them, so a reader can grasp the outcomes at a ` +
+    `glance. Omit this section if there were none.\n` +
+    `- If the talk was long or covered many topics, open with a short overview section ` +
+    `(2-3 bullets) summarizing its purpose and overall arc. Omit it for short talks.\n` +
     `- Everything must be written in ${target}.`;
 
   return generateSections({
