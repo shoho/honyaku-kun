@@ -5,7 +5,8 @@
 // - 約1分ごとに「現在の要約全体 + 新しく話された分」をモデルに渡し、
 //   更新された要約全体を受け取って差し替える（全文再生成方式）。
 //   トピックの統合・再編成が可能で、1回の失敗も次回の更新で自己修復される。
-// - 呼び出しは低頻度なので、速度より正確性の高いモデルを使う（gemini.js の SUMMARY_MODEL）。
+// - 呼び出しは低頻度なので、速度より正確性の高いモデルを使う（UI で選択、既定は
+//   gemini.js の SUMMARY_MODEL）。
 // - 最初の要約だけは1分待たず、内容が溜まり次第早めに出す。
 // - 失敗時は消費分を戻して次回に再試行。
 
@@ -18,8 +19,9 @@ const PENDING_MAX_CHARS = 24000;
 const SOURCE_MAX_CHARS = 24000;
 
 export class Summarizer {
-  constructor({ apiKey, targetName, onSummary, onError }) {
+  constructor({ apiKey, model, targetName, onSummary, onError }) {
     this.apiKey = apiKey;
+    this.model = model; // 未指定なら gemini.js の既定モデル
     this.targetName = targetName;
     this.onSummary = onSummary; // (sections: [{topic, points[]}]) を受け取る
     this.onError = onError;
@@ -77,6 +79,7 @@ export class Summarizer {
     try {
       const sections = await updateMinutes({
         apiKey: this.apiKey,
+        model: this.model,
         targetName: this.targetName,
         sections: this.sections,
         transcript: consumed.trim(),
