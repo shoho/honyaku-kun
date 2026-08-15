@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { updateMinutes, finalizeMinutes, sanitizeSections } from "../js/gemini.js";
+import {
+  updateMinutes,
+  finalizeMinutes,
+  sanitizeSections,
+  SUMMARY_MODEL,
+  SUMMARY_MODELS,
+} from "../js/gemini.js";
 
 const API_KEY = "test-key";
 
@@ -159,6 +165,34 @@ describe("共通プロンプトルール", () => {
       expect(prompt).toContain("Never invent speakers.");
       expect(prompt).toContain("Everything must be written in Japanese.");
     }
+  });
+});
+
+describe("モデル選択", () => {
+  it("既定はプルダウン先頭の gemini-flash-latest", () => {
+    expect(SUMMARY_MODEL).toBe("gemini-flash-latest");
+    expect(SUMMARY_MODELS[0].id).toBe(SUMMARY_MODEL);
+    expect(SUMMARY_MODELS.every((m) => m.id && m.label)).toBe(true);
+  });
+
+  it("model を渡すとそのモデルのエンドポイントを叩く（ライブ更新・最終版とも）", async () => {
+    await updateMinutes({ apiKey: API_KEY, model: "gemini-pro-latest", transcript: "x" });
+    await finalizeMinutes({ apiKey: API_KEY, model: "gemini-pro-latest", transcript: "x" });
+    for (const [url] of fetchMock.mock.calls) {
+      expect(url).toContain("/models/gemini-pro-latest:generateContent");
+    }
+  });
+
+  it("model 未指定なら既定モデルにフォールバックする", async () => {
+    await updateMinutes({ apiKey: API_KEY, transcript: "x" });
+    expect(fetchMock.mock.calls[0][0]).toContain(`/models/${SUMMARY_MODEL}:generateContent`);
+  });
+
+  it("モデル ID はパスに埋め込む前にエスケープする", async () => {
+    await updateMinutes({ apiKey: API_KEY, model: "../../evil", transcript: "x" });
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).not.toContain("../../");
+    expect(url).toContain("/models/..%2F..%2Fevil:generateContent");
   });
 });
 

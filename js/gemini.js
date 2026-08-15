@@ -4,9 +4,19 @@
 // （x-goog-api-key ヘッダー。URL クエリには載せない）。
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-// 常に最新の Flash を使うためエイリアスを指定する（2026-05-19 時点の実体は
-// gemini-3.5-flash）。エイリアスは新リリースごとに差し替わり、preview を指すこともある。
-export const SUMMARY_MODEL = "gemini-flash-latest";
+
+// 議事録に使えるモデルの単一情報源（UI のプルダウンはこれから生成する）。
+// "-latest" はエイリアスで、新リリースごとに実体が差し替わる（2026-05-19 時点の
+// gemini-flash-latest の実体は gemini-3.5-flash）。実体を固定したいときは
+// バージョン付きの ID を選ぶ。不正な値は Google 側でエラーになるだけ。
+export const SUMMARY_MODELS = [
+  { id: "gemini-flash-latest", label: "Gemini Flash (latest)" },
+  { id: "gemini-flash-lite-latest", label: "Gemini Flash Lite (latest)" },
+  { id: "gemini-pro-latest", label: "Gemini Pro (latest)" },
+  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (pinned)" },
+];
+// 既定（＝プルダウンの初期選択）。model 未指定の呼び出しもこれにフォールバックする。
+export const SUMMARY_MODEL = SUMMARY_MODELS[0].id;
 
 const MAX_TOPIC_CHARS = 120;
 const MAX_POINT_CHARS = 300;
@@ -78,7 +88,7 @@ function fidelityRule(mode) {
 }
 
 // ライブ議事録の更新（約1分ごと）。現在の要約全体＋新規分を渡して全文再生成する。
-export async function updateMinutes({ apiKey, targetName, sections, transcript, source, mode = "translation" }) {
+export async function updateMinutes({ apiKey, model, targetName, sections, transcript, source, mode = "translation" }) {
   const target = minutesTarget(mode, targetName);
   const clean = sanitizeSections(sections);
   const newText = String(transcript ?? "").slice(-16000);
@@ -119,6 +129,7 @@ export async function updateMinutes({ apiKey, targetName, sections, transcript, 
 
   return generateSections({
     apiKey,
+    model,
     prompt,
     thinkingLevel: "medium",
     maxOutputTokens: 8192,
@@ -128,7 +139,7 @@ export async function updateMinutes({ apiKey, targetName, sections, transcript, 
 }
 
 // 最終版議事録（セッション全体を俯瞰して再構成）。一度きりなので推論レベルを上げる。
-export async function finalizeMinutes({ apiKey, targetName, sections, transcript, source, mode = "translation" }) {
+export async function finalizeMinutes({ apiKey, model, targetName, sections, transcript, source, mode = "translation" }) {
   const target = minutesTarget(mode, targetName);
   const fullText = String(transcript ?? "").slice(-120000);
   const sourceText = String(source ?? "").slice(-120000);
@@ -170,6 +181,7 @@ export async function finalizeMinutes({ apiKey, targetName, sections, transcript
 
   return generateSections({
     apiKey,
+    model,
     prompt,
     thinkingLevel: "high",
     maxOutputTokens: 16384,
@@ -179,8 +191,9 @@ export async function finalizeMinutes({ apiKey, targetName, sections, transcript
 }
 
 // generateContent を responseSchema 付きで呼び、{sections} を正規化して返す
-async function generateSections({ apiKey, prompt, thinkingLevel, maxOutputTokens, maxSections, maxPoints }) {
+async function generateSections({ apiKey, model, prompt, thinkingLevel, maxOutputTokens, maxSections, maxPoints }) {
   if (!apiKey) throw new Error("API key is not set");
+  const modelId = String(model || SUMMARY_MODEL);
 
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -209,7 +222,8 @@ async function generateSections({ apiKey, prompt, thinkingLevel, maxOutputTokens
     },
   };
 
-  const resp = await fetch(`${API_BASE}/models/${SUMMARY_MODEL}:generateContent`, {
+  // モデル ID は UI 由来なのでパス埋め込み前にエスケープする
+  const resp = await fetch(`${API_BASE}/models/${encodeURIComponent(modelId)}:generateContent`, {
     method: "POST",
     headers: {
       "content-type": "application/json",

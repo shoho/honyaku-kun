@@ -9,7 +9,7 @@
 - 依存ゼロ・ビルド無し・サーバー無し（vanilla HTML/CSS/JS、ESM）。静的ホスティングに置くだけで動く（sandbox 配信向けの単一ファイルビルドも用意、後述）
 - Gemini API キーは **UI から入力**し、ブラウザの localStorage にのみ保存
 - ブラウザから **Google の Gemini API を直接呼ぶ**（翻訳・書き起こし: Live API WebSocket 直結、議事録: REST）。他のサーバーは一切経由しない
-- 議事録の生成は `gemini-flash-latest`（structured output。最新 Flash を指すエイリアスで、2026-05-19 時点の実体は `gemini-3.5-flash`）
+- 議事録の生成は `gemini-flash-latest`（structured output。最新 Flash を指すエイリアスで、2026-05-19 時点の実体は `gemini-3.5-flash`）。翻訳・議事録ともヘッダーのプルダウンで使用モデルを確認・変更できる
 
 ## 使い方
 
@@ -23,6 +23,7 @@
 
 3. ヘッダーの **Gemini API Key** 欄にキーを貼り付け（次回以降は自動復元）
 4. タブで **翻訳くん / 議事録くん** を選び、音声ソース（マイク / タブ音声）と、翻訳くんの場合は翻訳先言語を選んで **Start**
+   - **Translation model** / **Minutes model** のプルダウンで、翻訳・議事録それぞれに使うモデルを確認・変更できます（既定は上記のとおり。選択肢は `js/app.js` の `LIVE_MODELS` と `js/gemini.js` の `SUMMARY_MODELS`）。議事録くんの書き起こしモデルは固定のため Translation model は表示されません。セッション中は変更できません
 
 GitHub Pages・Netlify・S3 など任意の静的ホスティングにそのまま置けます（サブパス配信対応済み）。
 

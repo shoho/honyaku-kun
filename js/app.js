@@ -1,7 +1,7 @@
 import { AudioPipeline } from "./audio.js";
 import { LiveClient } from "./live-client.js";
 import { Summarizer } from "./summarizer.js";
-import { finalizeMinutes } from "./gemini.js";
+import { finalizeMinutes, SUMMARY_MODELS, SUMMARY_MODEL } from "./gemini.js";
 
 // 翻訳くんで選択可能な Live モデル（不正な値は Google 側でエラーになるだけ）。
 // clientMode / apiVersion は LiveClient にそのまま渡す:
@@ -85,6 +85,7 @@ const el = {
   brandSub: document.getElementById("brandSub"),
   refinedStep: document.querySelector(".col--refined .col-step"),
   liveModel: document.getElementById("liveModel"),
+  summaryModel: document.getElementById("summaryModel"),
   audioSource: document.getElementById("audioSource"),
   target: document.getElementById("targetLang"),
   copySummary: document.getElementById("copySummary"),
@@ -111,7 +112,10 @@ const state = {
   fullTranslation: "",
   fullSource: "",
   targetLang: "ja",
-  apiKey: "",       // セッション中に入力欄を書き換えられても影響しないよう開始時に固定
+  // セッション中に入力欄・プルダウンを変えられても影響しないよう開始時に固定する
+  // （最終版議事録は停止後にも生成できるので、そのときも同じモデルを使う）
+  apiKey: "",
+  summaryModel: SUMMARY_MODEL,
 };
 const FULL_LOG_MAX_CHARS = 200000;
 
@@ -194,6 +198,10 @@ function populateLangSelects() {
   for (const { id, label } of LIVE_MODELS) {
     el.liveModel.add(new Option(label, id));
   }
+  for (const { id, label } of SUMMARY_MODELS) {
+    el.summaryModel.add(new Option(label, id));
+  }
+  el.summaryModel.value = SUMMARY_MODEL;
   for (const { code, label } of LANGS) {
     el.target.add(new Option(label, code));
   }
@@ -211,6 +219,7 @@ function setControlsDisabled(disabled) {
     el.target.disabled =
     el.audioSource.disabled =
     el.liveModel.disabled =
+    el.summaryModel.disabled =
       disabled;
   for (const tab of el.tabs) tab.disabled = disabled;
 }
@@ -224,6 +233,7 @@ async function startSession() {
     return;
   }
   state.apiKey = apiKey;
+  state.summaryModel = el.summaryModel.value;
 
   // 停止後にタブを切り替えても finalize が正しく動くよう、モードは開始時に固定
   const isMinutes = state.mode === "minutes";
@@ -246,6 +256,7 @@ async function startSession() {
   // 議事録くんは原文の書き起こしから、書き起こしと同じ言語で議事録を作る
   state.summarizer = new Summarizer({
     apiKey,
+    model: state.summaryModel,
     mode: isMinutes ? "transcript" : "translation",
     targetName: isMinutes ? null : LANG_NAMES[targetLang],
     onSummary: (sections) => {
@@ -425,6 +436,7 @@ el.finalizeBtn.addEventListener("click", async () => {
     // state.apiKey はこのボタンが見える時点で必ず設定済み（startSession で固定）
     const sections = await finalizeMinutes({
       apiKey: state.apiKey,
+      model: state.summaryModel,
       mode: isMinutes ? "transcript" : "translation",
       targetName: isMinutes ? null : LANG_NAMES[state.targetLang],
       sections: state.lastSections,

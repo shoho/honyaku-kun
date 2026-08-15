@@ -37,10 +37,16 @@
         />
       </label>
 
-      <!-- Options are generated from LIVE_MODELS in app.js（議事録くんはモデル固定のため非表示） -->
+      <!-- Options are generated from LIVE_MODELS in app.js（議事録くんは書き起こしモデル固定のため非表示） -->
       <label class="field field--model">
-        <span class="field-label">Model</span>
+        <span class="field-label">Translation model</span>
         <select id="liveModel"></select>
+      </label>
+
+      <!-- Options are generated from SUMMARY_MODELS in gemini.js -->
+      <label class="field">
+        <span class="field-label">Minutes model</span>
+        <select id="summaryModel"></select>
       </label>
 
       <label class="field">
