@@ -3,10 +3,32 @@ import { LiveClient } from "./live-client.js";
 import { Summarizer } from "./summarizer.js";
 import { finalizeMinutes, SUMMARY_MODELS, SUMMARY_MODEL } from "./gemini.js";
 
-// 選択可能な Live モデル（不正な値は Google 側でエラーになるだけ）
+// 翻訳くんで選択可能な Live モデル（不正な値は Google 側でエラーになるだけ）。
+// clientMode / apiVersion は LiveClient にそのまま渡す:
+//   - translate:      翻訳専用モデル。逐語的だが低遅延（v1alpha のみ対応）
+//   - translate-text: 通常モデル＋プロンプト翻訳。音声生成コストが無く、
+//                     フィラー除去などで読みやすいが、発話の切れ目まで訳が出ない
 const LIVE_MODELS = [
-  { id: "gemini-3.5-live-translate-preview", label: "Gemini 3.5 Live Translate" },
+  {
+    id: "gemini-3.5-live-translate-preview",
+    label: "Gemini 3.5 Live Translate",
+    clientMode: "translate",
+    apiVersion: "v1alpha",
+  },
+  {
+    id: "gemini-3.1-flash-live-preview",
+    label: "Gemini 3.1 Flash Live (text)",
+    clientMode: "translate-text",
+    apiVersion: "v1beta",
+  },
 ];
+
+// 議事録くんは書き起こし専用（応答抑制した通常 Live モデル）で固定
+const MINUTES_LIVE = {
+  id: "gemini-3.1-flash-live-preview",
+  clientMode: "transcribe",
+  apiVersion: "v1beta",
+};
 
 // 翻訳先言語の単一情報源（ソース言語はモデルが自動検出するため指定不要）。
 // code は translationConfig.targetLanguageCode に渡す BCP-47、name は要約プロンプト用。
@@ -41,9 +63,27 @@ const COPY_LABEL = "Copy";
 
 // API キーはこのブラウザの localStorage にのみ保存し、Google 以外には送らない
 const API_KEY_STORAGE = "honyaku-kun.gemini-api-key";
+const MODE_STORAGE = "honyaku-kun.app-mode";
+
+// タブごとの表示文言（アプリ名の使い分けは tabs 自体が担う）
+const MODE_TEXT = {
+  translate: {
+    docTitle: "翻訳くん — Real-time Interpretation",
+    sub: "Real-time interpretation & live minutes",
+    refinedStep: "03",
+  },
+  minutes: {
+    docTitle: "議事録くん — Real-time Minutes",
+    sub: "Real-time transcription & live minutes",
+    refinedStep: "02",
+  },
+};
 
 const el = {
   apiKey: document.getElementById("apiKey"),
+  tabs: [...document.querySelectorAll(".tab")],
+  brandSub: document.getElementById("brandSub"),
+  refinedStep: document.querySelector(".col--refined .col-step"),
   liveModel: document.getElementById("liveModel"),
   summaryModel: document.getElementById("summaryModel"),
   audioSource: document.getElementById("audioSource"),
@@ -59,13 +99,16 @@ const el = {
 };
 
 const state = {
+  mode: "translate",        // アクティブなタブ（"translate" | "minutes"）
+  sessionMode: "translate", // 直近セッションのモード（停止後の finalize 用に固定）
   running: false,
   audio: null,
   live: null,
   summarizer: null,
   lastSections: [], // コピー用に保持する最新の要約
   wakeLock: null,   // セッション中の画面スリープ防止
-  // 最終版議事録の材料となる全文ログ（セッション開始でリセット、停止後も保持）
+  // 最終版議事録の材料となる全文ログ（セッション開始でリセット、停止後も保持。
+  // 議事録くんでは fullSource のみ使う）
   fullTranslation: "",
   fullSource: "",
   targetLang: "ja",
@@ -77,9 +120,9 @@ const state = {
 const FULL_LOG_MAX_CHARS = 200000;
 
 populateLangSelects();
-setPlaceholders();
-updateStartLabel();
 initApiKey();
+applyMode(initialMode());
+updateStartLabel();
 setStatus("idle"); // 表示文字列の所有権は JS 側に一元化
 
 el.micBtn.addEventListener("click", () => {
@@ -88,6 +131,42 @@ el.micBtn.addEventListener("click", () => {
 });
 
 el.audioSource.addEventListener("change", updateStartLabel);
+
+/* ---------- タブ（翻訳くん / 議事録くん） ---------- */
+
+function initialMode() {
+  try {
+    const stored = localStorage.getItem(MODE_STORAGE);
+    if (stored in MODE_TEXT) return stored;
+  } catch {}
+  return "translate";
+}
+
+// タブ切り替え＝画面の作り直し。前モードの結果（ログ・要約・ボタン）は持ち越さない。
+// セッション中は setControlsDisabled でタブ自体が無効化されるためここには来ない
+function applyMode(mode) {
+  state.mode = mode;
+  const text = MODE_TEXT[mode];
+  document.body.classList.toggle("mode-minutes", mode === "minutes");
+  document.title = text.docTitle;
+  el.brandSub.textContent = text.sub;
+  el.refinedStep.textContent = text.refinedStep;
+  for (const tab of el.tabs) tab.classList.toggle("is-active", tab.dataset.mode === mode);
+
+  state.lastSections = [];
+  state.fullTranslation = "";
+  state.fullSource = "";
+  el.copySummary.hidden = true;
+  el.finalizeBtn.hidden = true;
+  setPlaceholders();
+  try { localStorage.setItem(MODE_STORAGE, mode); } catch {}
+}
+
+for (const tab of el.tabs) {
+  tab.addEventListener("click", () => {
+    if (!state.running && tab.dataset.mode !== state.mode) applyMode(tab.dataset.mode);
+  });
+}
 
 /* ---------- API キー（localStorage に永続化） ---------- */
 
@@ -134,7 +213,7 @@ function setStatus(kind, text = STATUS_TEXT[kind] ?? kind) {
   el.status.textContent = text;
 }
 
-// セッション中は設定類（API キー含む）を変更不可にする。開始/停止で対で呼ぶ
+// セッション中は設定類（API キー・タブ含む）を変更不可にする。開始/停止で対で呼ぶ
 function setControlsDisabled(disabled) {
   el.apiKey.disabled =
     el.target.disabled =
@@ -142,6 +221,7 @@ function setControlsDisabled(disabled) {
     el.liveModel.disabled =
     el.summaryModel.disabled =
       disabled;
+  for (const tab of el.tabs) tab.disabled = disabled;
 }
 
 async function startSession() {
@@ -154,6 +234,10 @@ async function startSession() {
   }
   state.apiKey = apiKey;
   state.summaryModel = el.summaryModel.value;
+
+  // 停止後にタブを切り替えても finalize が正しく動くよう、モードは開始時に固定
+  const isMinutes = state.mode === "minutes";
+  state.sessionMode = state.mode;
 
   const targetLang = el.target.value;
   state.targetLang = targetLang;
@@ -168,11 +252,13 @@ async function startSession() {
   el.micLabel.textContent = "Stop";
   setControlsDisabled(true);
 
-  // ③ 要約スケジューラ（約1分ごとに要約全体を更新 — タイミングは Summarizer が所有）
+  // ③ 要約スケジューラ（約1分ごとに要約全体を更新 — タイミングは Summarizer が所有）。
+  // 議事録くんは原文の書き起こしから、書き起こしと同じ言語で議事録を作る
   state.summarizer = new Summarizer({
     apiKey,
     model: state.summaryModel,
-    targetName: LANG_NAMES[targetLang],
+    mode: isMinutes ? "transcript" : "translation",
+    targetName: isMinutes ? null : LANG_NAMES[targetLang],
     onSummary: (sections) => {
       state.lastSections = sections;
       el.copySummary.hidden = false;
@@ -187,16 +273,29 @@ async function startSession() {
   });
 
   // ②① Live クライアント（接続ステータスは onStatus 経由で一元管理）
+  const liveModel = isMinutes
+    ? MINUTES_LIVE
+    : LIVE_MODELS.find((m) => m.id === el.liveModel.value) ?? LIVE_MODELS[0];
   state.live = new LiveClient({
     apiKey,
-    model: el.liveModel.value,
+    model: liveModel.id,
+    mode: liveModel.clientMode,
+    apiVersion: liveModel.apiVersion,
     targetCode: targetLang,
+    targetName: LANG_NAMES[targetLang],
     onStatus: setStatus,
     onOriginal: (t) => {
       appendStream(el.original, t);
-      state.summarizer.feedSource(t); // 要約時の誤訳補正の根拠として原文も渡す
+      if (isMinutes) {
+        // 議事録くん: 書き起こしが議事録の本文材料（要約の発火もこちらが担う）
+        state.summarizer.feed(t);
+        el.finalizeBtn.hidden = false;
+      } else {
+        state.summarizer.feedSource(t); // 要約時の誤訳補正の根拠として原文も渡す
+      }
       state.fullSource = (state.fullSource + t).slice(-FULL_LOG_MAX_CHARS);
     },
+    // 議事録くん（transcribe モード）では翻訳が届かないため呼ばれない
     onTranslation: (t) => {
       appendStream(el.translation, t);
       state.summarizer.feed(t);
@@ -265,7 +364,10 @@ async function stopSession() {
 function setPlaceholders() {
   el.original.innerHTML = `<span class="placeholder">Recognized speech will appear here once you start.</span>`;
   el.translation.innerHTML = `<span class="placeholder">Live translation streams here.</span>`;
-  el.refined.innerHTML = `<span class="placeholder">Topic-organized minutes are compiled here about once a minute.</span>`;
+  el.refined.innerHTML =
+    state.mode === "minutes"
+      ? `<span class="placeholder">Topic-organized minutes are compiled here about once a minute, in the spoken language.</span>`
+      : `<span class="placeholder">Topic-organized minutes are compiled here about once a minute.</span>`;
 }
 
 function clearViews() {
@@ -324,7 +426,10 @@ function autoscroll(node) {
 /* ---------- 最終版議事録（二段階要約の第二段） ---------- */
 
 el.finalizeBtn.addEventListener("click", async () => {
-  if (!state.fullTranslation.trim()) return;
+  // タブ切り替えでボタンごとリセットされるため、ここは常に直近セッションのモード
+  const isMinutes = state.sessionMode === "minutes";
+  const transcript = isMinutes ? state.fullSource : state.fullTranslation;
+  if (!transcript.trim()) return;
   el.finalizeBtn.disabled = true;
   el.finalizeBtn.textContent = "Generating…";
   try {
@@ -332,10 +437,11 @@ el.finalizeBtn.addEventListener("click", async () => {
     const sections = await finalizeMinutes({
       apiKey: state.apiKey,
       model: state.summaryModel,
-      targetName: LANG_NAMES[state.targetLang],
+      mode: isMinutes ? "transcript" : "translation",
+      targetName: isMinutes ? null : LANG_NAMES[state.targetLang],
       sections: state.lastSections,
-      transcript: state.fullTranslation,
-      source: state.fullSource,
+      transcript,
+      source: isMinutes ? "" : state.fullSource,
     });
     if (Array.isArray(sections) && sections.length > 0) {
       state.lastSections = sections;

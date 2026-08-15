@@ -70,9 +70,26 @@ function sharedRules(target) {
   );
 }
 
+// 議事録の言語と入力ブロック・忠実性ルールをモードで切り替える。
+//   - "translation": 翻訳くん。機械翻訳＋原文の2系統を渡し、議事録は翻訳先言語で書く
+//   - "transcript":  議事録くん。原文の書き起こしのみを渡し、議事録も同じ言語で書く
+function minutesTarget(mode, targetName) {
+  return mode === "transcript"
+    ? "the same language as the transcript"
+    : String(targetName ?? "the target language").slice(0, 60);
+}
+
+function fidelityRule(mode) {
+  return mode === "transcript"
+    ? `- Stay faithful to what was said — never invent or speculate. The transcript is raw ` +
+      `speech recognition and may contain mis-recognized words; interpret them from context.\n`
+    : `- Stay faithful to what was said — never invent or speculate. Use the source transcript ` +
+      `to correct translation errors.\n`;
+}
+
 // ライブ議事録の更新（約1分ごと）。現在の要約全体＋新規分を渡して全文再生成する。
-export async function updateMinutes({ apiKey, model, targetName, sections, transcript, source }) {
-  const target = String(targetName ?? "the target language").slice(0, 60);
+export async function updateMinutes({ apiKey, model, targetName, sections, transcript, source, mode = "translation" }) {
+  const target = minutesTarget(mode, targetName);
   const clean = sanitizeSections(sections);
   const newText = String(transcript ?? "").slice(-16000);
   const sourceText = String(source ?? "").slice(-16000);
@@ -80,21 +97,26 @@ export async function updateMinutes({ apiKey, model, targetName, sections, trans
 
   const current = clean.length ? formatMinutes(clean) : "(まだ要約はない — これが最初の更新)";
 
+  const transcriptBlocks =
+    mode === "transcript"
+      ? `[NEW TRANSCRIPT — speech-recognition text of roughly the last minute of speech, in ` +
+        `the speaker's original language]\n${newText}\n\n`
+      : `[NEW TRANSCRIPT — machine translation of roughly the last minute of speech]\n${newText}\n\n` +
+        `[SOURCE TRANSCRIPT — what was actually said, in the original language; authoritative when ` +
+        `the translation is unclear or wrong]\n${sourceText || "(not available)"}\n\n`;
+
   const prompt =
     `You are keeping live, structured minutes of an ongoing talk (presentation or conversation) ` +
     `for an audience reading along in real time. The minutes are written in ${target}.\n\n` +
     `[CURRENT MINUTES]\n${current}\n\n` +
-    `[NEW TRANSCRIPT — machine translation of roughly the last minute of speech]\n${newText}\n\n` +
-    `[SOURCE TRANSCRIPT — what was actually said, in the original language; authoritative when ` +
-    `the translation is unclear or wrong]\n${sourceText || "(not available)"}\n\n` +
+    transcriptBlocks +
     `Update the minutes to incorporate the new content, and return the COMPLETE updated minutes.\n` +
     `Rules:\n` +
     `- Organize by topic: extend existing sections, add new ones, and merge or reorganize ` +
     `sections when it makes the flow of the talk clearer.\n` +
     `- Bullet points must be concise, concrete and information-dense: keep facts, numbers, ` +
     `names, decisions and announcements; drop filler, greetings and repetition.\n` +
-    `- Stay faithful to what was said — never invent or speculate. Use the source transcript ` +
-    `to correct translation errors.\n` +
+    fidelityRule(mode) +
     sharedRules(target) +
     `- A discussion may still be in progress: if a topic is being debated and no conclusion ` +
     `has been reached yet, mark it with an "ongoing / not yet decided" label written in ` +
@@ -117,8 +139,8 @@ export async function updateMinutes({ apiKey, model, targetName, sections, trans
 }
 
 // 最終版議事録（セッション全体を俯瞰して再構成）。一度きりなので推論レベルを上げる。
-export async function finalizeMinutes({ apiKey, model, targetName, sections, transcript, source }) {
-  const target = String(targetName ?? "the target language").slice(0, 60);
+export async function finalizeMinutes({ apiKey, model, targetName, sections, transcript, source, mode = "translation" }) {
+  const target = minutesTarget(mode, targetName);
   const fullText = String(transcript ?? "").slice(-120000);
   const sourceText = String(source ?? "").slice(-120000);
   const liveSections = sanitizeSections(sections);
@@ -126,12 +148,18 @@ export async function finalizeMinutes({ apiKey, model, targetName, sections, tra
 
   const liveMinutes = liveSections.length ? formatMinutes(liveSections) : "(none)";
 
+  const transcriptBlocks =
+    mode === "transcript"
+      ? `[FULL TRANSCRIPT — speech-recognition text of the entire talk, in the speaker's ` +
+        `original language]\n${fullText}\n\n`
+      : `[FULL TRANSCRIPT — machine translation of the entire talk]\n${fullText}\n\n` +
+        `[SOURCE TRANSCRIPT — what was actually said, in the original language; authoritative ` +
+        `when the translation is unclear or wrong]\n${sourceText || "(not available)"}\n\n`;
+
   const prompt =
     `You are writing the FINAL, polished minutes of a talk (presentation or conversation) ` +
     `that has just ended. The minutes must be written in ${target}.\n\n` +
-    `[FULL TRANSCRIPT — machine translation of the entire talk]\n${fullText}\n\n` +
-    `[SOURCE TRANSCRIPT — what was actually said, in the original language; authoritative ` +
-    `when the translation is unclear or wrong]\n${sourceText || "(not available)"}\n\n` +
+    transcriptBlocks +
     `[LIVE MINUTES — incrementally built during the talk; useful as a hint for topics, ` +
     `but may be fragmented or redundant]\n${liveMinutes}\n\n` +
     `Write the complete final minutes from scratch, with the whole talk in view:\n` +
@@ -139,8 +167,7 @@ export async function finalizeMinutes({ apiKey, model, targetName, sections, tra
     `merging fragments and removing redundancy that accumulated in the live minutes.\n` +
     `- Bullet points must be concise, concrete and information-dense: keep all facts, numbers, ` +
     `names, decisions and announcements; drop filler and repetition.\n` +
-    `- Stay strictly faithful to the transcript — never invent or speculate. Use the source ` +
-    `transcript to correct translation errors.\n` +
+    fidelityRule(mode) +
     sharedRules(target) +
     `- Reconstruct each discussion from the full transcript rather than copying the live ` +
     `minutes' fragments: now that the outcome is known, present the issue, the views with ` +

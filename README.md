@@ -1,11 +1,15 @@
-# 翻訳くん — Real-time interpretation & live minutes
+# 翻訳くん / 議事録くん — Real-time interpretation & minutes
 
-スピーチ・動画音声をリアルタイム同時通訳し、ライブ議事録を育てる 3 カラム Web アプリ。
+スピーチ・動画音声をリアルタイム処理する 2 モードの Web アプリ。タブで切り替える。
 
+- **翻訳くん** — リアルタイム同時通訳＋ライブ議事録（3 カラム）。翻訳モデルを選択できる:
+  - `gemini-3.5-live-translate-preview`（既定）: 翻訳専用モデル。低遅延の逐語訳だが、フィラー（um, ah 等）まで律儀に訳す。API 仕様上、使われない翻訳音声の生成コストが掛かる
+  - `gemini-3.1-flash-live-preview` (text): 通常 Live モデル＋プロンプト翻訳。フィラーを除いた読みやすい訳文がテキストで届き、音声生成コストが無い。訳は発話の切れ目ごとにまとまって出る
+- **議事録くん** — 翻訳せず、元の言語のままリアルタイム書き起こし＋ライブ議事録（2 カラム）。議事録も話された言語で書く。応答を抑制した `gemini-3.1-flash-live-preview` の入力書き起こしだけを使うため、翻訳 API のコストが掛からない
 - 依存ゼロ・ビルド無し・サーバー無し（vanilla HTML/CSS/JS、ESM）。静的ホスティングに置くだけで動く（sandbox 配信向けの単一ファイルビルドも用意、後述）
 - Gemini API キーは **UI から入力**し、ブラウザの localStorage にのみ保存
-- ブラウザから **Google の Gemini API を直接呼ぶ**（翻訳: Live API WebSocket 直結、議事録: REST）。他のサーバーは一切経由しない
-- 翻訳は `gemini-3.5-live-translate-preview`（Live API / BidiGenerateContent）、議事録は `gemini-flash-latest`（structured output。最新 Flash を指すエイリアスで、2026-05-19 時点の実体は `gemini-3.5-flash`）。どちらもヘッダーのプルダウンで使用モデルを確認・変更できる
+- ブラウザから **Google の Gemini API を直接呼ぶ**（翻訳・書き起こし: Live API WebSocket 直結、議事録: REST）。他のサーバーは一切経由しない
+- 議事録の生成は `gemini-flash-latest`（structured output。最新 Flash を指すエイリアスで、2026-05-19 時点の実体は `gemini-3.5-flash`）。翻訳・議事録ともヘッダーのプルダウンで使用モデルを確認・変更できる
 
 ## 使い方
 
@@ -18,8 +22,8 @@
    ```
 
 3. ヘッダーの **Gemini API Key** 欄にキーを貼り付け（次回以降は自動復元）
-4. 音声ソース（マイク / タブ音声）と翻訳先言語を選んで **Start**
-   - **Translation model** / **Minutes model** のプルダウンで、翻訳・議事録それぞれに使うモデルを確認・変更できます（既定は上記のとおり。選択肢は `js/app.js` の `LIVE_MODELS` と `js/gemini.js` の `SUMMARY_MODELS`）。セッション中は変更できません
+4. タブで **翻訳くん / 議事録くん** を選び、音声ソース（マイク / タブ音声）と、翻訳くんの場合は翻訳先言語を選んで **Start**
+   - **Translation model** / **Minutes model** のプルダウンで、翻訳・議事録それぞれに使うモデルを確認・変更できます（既定は上記のとおり。選択肢は `js/app.js` の `LIVE_MODELS` と `js/gemini.js` の `SUMMARY_MODELS`）。議事録くんの書き起こしモデルは固定のため Translation model は表示されません。セッション中は変更できません
 
 GitHub Pages・Netlify・S3 など任意の静的ホスティングにそのまま置けます（サブパス配信対応済み）。
 
@@ -44,12 +48,14 @@ npm run build   # → dist/index.html（この 1 ファイルだけ配布すれ�
 ## 構成
 
 ```
-index.html        — 3 カラム UI + API キー入力
+index.html        — タブ + カラム UI + API キー入力
 styles.css        — デザイントークンは :root に集約
 build.mjs         — 単一ファイル版（dist/index.html）の生成スクリプト（esbuild）
 js/
-  app.js          — UI 配線・状態・描画・API キー管理
-  live-client.js  — Live API（BidiGenerateContent）へ WebSocket 直結
+  app.js          — UI 配線・タブ / モード状態・描画・API キー管理
+  live-client.js  — Live API（BidiGenerateContent）へ WebSocket 直結。
+                    translate（翻訳専用モデル）/ translate-text（通常モデルで翻訳）/
+                    transcribe（書き起こしのみ・応答抑制）の 3 モード
   audio.js        — マイク / タブ音声 → 16kHz/16bit PCM mono → base64
   pcm-worklet.js  — AudioWorklet（リサンプリング + PCM 化）
   summarizer.js   — 議事録スケジューラ（約60秒ごとに全文再生成）

@@ -117,6 +117,40 @@ describe("finalizeMinutes", () => {
   });
 });
 
+describe("transcript モード（議事録くん）", () => {
+  it("updateMinutes: 原文のみのプロンプトになり、議事録は書き起こしと同じ言語", async () => {
+    await updateMinutes({
+      apiKey: API_KEY,
+      mode: "transcript",
+      transcript: "会議を始めます。",
+    });
+    const prompt = JSON.parse(fetchMock.mock.calls[0][1].body).contents[0].parts[0].text;
+    expect(prompt).toContain("会議を始めます。");
+    expect(prompt).toContain("the same language as the transcript");
+    expect(prompt).toContain("speech-recognition text");
+    // 翻訳前提の文言は一切残さない
+    expect(prompt).not.toContain("machine translation");
+    expect(prompt).not.toContain("[SOURCE TRANSCRIPT");
+    expect(prompt).not.toContain("translation errors");
+  });
+
+  it("finalizeMinutes: 同様に原文のみ・同一言語のプロンプトになる", async () => {
+    await finalizeMinutes({
+      apiKey: API_KEY,
+      mode: "transcript",
+      transcript: "full source transcript",
+      sections: [{ topic: "Live", points: ["hint"] }],
+    });
+    const prompt = JSON.parse(fetchMock.mock.calls[0][1].body).contents[0].parts[0].text;
+    expect(prompt).toContain("FINAL");
+    expect(prompt).toContain("full source transcript");
+    expect(prompt).toContain("the same language as the transcript");
+    expect(prompt).toContain("■ Live");
+    expect(prompt).not.toContain("machine translation");
+    expect(prompt).not.toContain("[SOURCE TRANSCRIPT");
+  });
+});
+
 describe("共通プロンプトルール", () => {
   it("非ネイティブ話者・不明瞭マーカーのルールは両プロンプトに含まれる", async () => {
     await updateMinutes({ apiKey: API_KEY, targetName: "Japanese", transcript: "x" });
