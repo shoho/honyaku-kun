@@ -89,6 +89,17 @@ describe("Summarizer のスケジューリング", () => {
   });
 });
 
+describe("Summarizer の transcript モード（議事録くん）", () => {
+  it("mode を updateMinutes に引き渡す（プロンプトが原文のみ・同一言語になる）", async () => {
+    const m = new Summarizer({ apiKey: "test-key", mode: "transcript", onSummary, onError });
+    m.feed("x".repeat(FIRST_MIN_CHARS));
+    await m.flush();
+    const prompt = promptOf(fetchMock.mock.calls[0]);
+    expect(prompt).toContain("the same language as the transcript");
+    expect(prompt).not.toContain("machine translation");
+  });
+});
+
 describe("Summarizer の入力管理とエラー処理", () => {
   it("pending は上限でキャップされる", () => {
     s.feed("a".repeat(PENDING_MAX + 5000));

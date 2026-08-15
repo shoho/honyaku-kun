@@ -16,8 +16,12 @@
   <header class="topbar">
     <div class="brand">
       <span class="spark" aria-hidden="true">✳</span>
-      <h1 class="brand-title">翻訳くん</h1>
-      <span class="brand-sub">Real-time interpretation &amp; live minutes</span>
+      <!-- タブがアプリ名を兼ねる。active 状態・brand-sub の文言は app.js が所有 -->
+      <nav class="tabs" aria-label="App mode">
+        <button class="tab" data-mode="translate">翻訳くん</button>
+        <button class="tab" data-mode="minutes">議事録くん</button>
+      </nav>
+      <span id="brandSub" class="brand-sub">Real-time interpretation &amp; live minutes</span>
     </div>
 
     <div class="controls">
@@ -33,8 +37,8 @@
         />
       </label>
 
-      <!-- Options are generated from LIVE_MODELS in app.js -->
-      <label class="field">
+      <!-- Options are generated from LIVE_MODELS in app.js（議事録くんはモデル固定のため非表示） -->
+      <label class="field field--model">
         <span class="field-label">Model</span>
         <select id="liveModel"></select>
       </label>
@@ -55,7 +59,7 @@
       <span class="dir-arrow" aria-hidden="true">→</span>
 
       <!-- Options are generated from LANGS in app.js -->
-      <label class="field">
+      <label class="field field--target">
         <span class="field-label">Translate to</span>
         <select id="targetLang"></select>
       </label>

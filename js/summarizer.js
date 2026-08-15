@@ -18,9 +18,12 @@ const PENDING_MAX_CHARS = 24000;
 const SOURCE_MAX_CHARS = 24000;
 
 export class Summarizer {
-  constructor({ apiKey, targetName, onSummary, onError }) {
+  // mode は gemini.js にそのまま渡す（"translation" = 翻訳くん / "transcript" = 議事録くん。
+  // transcript モードでは feed() に原文の書き起こしを流し、feedSource() は使わない）
+  constructor({ apiKey, targetName, mode = "translation", onSummary, onError }) {
     this.apiKey = apiKey;
     this.targetName = targetName;
+    this.mode = mode;
     this.onSummary = onSummary; // (sections: [{topic, points[]}]) を受け取る
     this.onError = onError;
     this.pending = "";        // 前回の要約以降に届いた翻訳
@@ -78,6 +81,7 @@ export class Summarizer {
       const sections = await updateMinutes({
         apiKey: this.apiKey,
         targetName: this.targetName,
+        mode: this.mode,
         sections: this.sections,
         transcript: consumed.trim(),
         source: consumedSource.trim(),

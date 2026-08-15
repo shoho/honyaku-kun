@@ -16,6 +16,84 @@ function makeClient(overrides = {}) {
   return { lc, calls };
 }
 
+// _sendSetup が送る setup ペイロードを取り出す
+function setupPayload(lc) {
+  const send = vi.fn();
+  lc.ws = { send };
+  lc._sendSetup();
+  return JSON.parse(send.mock.calls[0][0]).setup;
+}
+
+describe("LiveClient の setup（モード別）", () => {
+  it("translate（既定）: translationConfig + AUDIO + 出力書き起こし", () => {
+    const { lc } = makeClient();
+    const setup = setupPayload(lc);
+    expect(setup.model).toBe("models/test-model");
+    expect(setup.generationConfig.responseModalities).toEqual(["AUDIO"]);
+    expect(setup.generationConfig.translationConfig.targetLanguageCode).toBe("ja");
+    expect(setup.inputAudioTranscription).toEqual({});
+    expect(setup.outputAudioTranscription).toEqual({});
+    expect(setup.systemInstruction).toBeUndefined();
+    // live-translate はモデル側が長時間セッションに対応するため圧縮は送らない
+    expect(setup.contextWindowCompression).toBeUndefined();
+  });
+
+  it("translate-text: TEXT + 翻訳指示の systemInstruction + 圧縮。translationConfig は送らない", () => {
+    const { lc } = makeClient({ mode: "translate-text", targetName: "Japanese" });
+    const setup = setupPayload(lc);
+    expect(setup.generationConfig.responseModalities).toEqual(["TEXT"]);
+    expect(setup.generationConfig.translationConfig).toBeUndefined();
+    const instruction = setup.systemInstruction.parts[0].text;
+    expect(instruction).toContain("Japanese");
+    expect(instruction).toContain("filler");
+    expect(setup.inputAudioTranscription).toEqual({});
+    expect(setup.outputAudioTranscription).toBeUndefined();
+    // 通常モデルは音声セッションが既定15分で切れるため圧縮が必須
+    expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
+  });
+
+  it("transcribe: TEXT + 沈黙指示 + 圧縮", () => {
+    const { lc } = makeClient({ mode: "transcribe" });
+    const setup = setupPayload(lc);
+    expect(setup.generationConfig.responseModalities).toEqual(["TEXT"]);
+    expect(setup.systemInstruction.parts[0].text).toContain("silent");
+    expect(setup.contextWindowCompression).toEqual({ slidingWindow: {} });
+  });
+
+  it("再開ハンドルは全モードで setup に載る", () => {
+    for (const mode of ["translate", "translate-text", "transcribe"]) {
+      const { lc } = makeClient({ mode });
+      lc.resumeHandle = "handle-9";
+      expect(setupPayload(lc).sessionResumption).toEqual({ handle: "handle-9" });
+    }
+  });
+});
+
+describe("LiveClient の接続先", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("apiVersion が WebSocket URL に反映される（既定 v1alpha）", () => {
+    const urls = [];
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        static OPEN = 1;
+        constructor(url) { urls.push(url); }
+        close() {}
+      }
+    );
+    const { lc } = makeClient();
+    lc.connect();
+    expect(urls[0]).toContain(".v1alpha.");
+
+    const { lc: lc2 } = makeClient({ apiVersion: "v1beta" });
+    lc2.connect();
+    expect(urls[1]).toContain(".v1beta.");
+    lc.close();
+    lc2.close();
+  });
+});
+
 describe("LiveClient のメッセージ処理", () => {
   it("setupComplete で ready になり live を通知する", () => {
     const { lc, calls } = makeClient();
@@ -69,6 +147,45 @@ describe("LiveClient のメッセージ処理", () => {
   it("未接続時の sendAudio は何もしない（例外なし）", () => {
     const { lc } = makeClient();
     expect(() => lc.sendAudio("AAAA")).not.toThrow();
+  });
+
+  it("translate-text: modelTurn のテキストが翻訳として届き、ターンの切れ目で改行する", () => {
+    const { lc, calls } = makeClient({ mode: "translate-text" });
+    lc._onMessage({
+      data: JSON.stringify({
+        serverContent: { modelTurn: { parts: [{ text: "こんに" }, { text: "ちは" }] } },
+      }),
+    });
+    lc._onMessage({ data: JSON.stringify({ serverContent: { turnComplete: true } }) });
+    expect(calls.translation).toEqual(["こんに", "ちは", "\n"]);
+  });
+
+  it("translate-text: テキストの無いターンでは改行を挿入しない", () => {
+    const { lc, calls } = makeClient({ mode: "translate-text" });
+    lc._onMessage({ data: JSON.stringify({ serverContent: { turnComplete: true } }) });
+    expect(calls.translation).toEqual([]);
+  });
+
+  it("transcribe: 応答抑制をすり抜けた modelTurn は捨て、書き起こしだけ流す", () => {
+    const { lc, calls } = makeClient({ mode: "transcribe" });
+    lc._onMessage({
+      data: JSON.stringify({
+        serverContent: { modelTurn: { parts: [{ text: "はい、了解です" }] }, turnComplete: true },
+      }),
+    });
+    lc._onMessage({
+      data: JSON.stringify({ serverContent: { inputTranscription: { text: "会議を始めます" } } }),
+    });
+    expect(calls.translation).toEqual([]);
+    expect(calls.original).toEqual(["会議を始めます"]);
+  });
+
+  it("translate: modelTurn（翻訳音声のメタ）は翻訳として流さない", () => {
+    const { lc, calls } = makeClient();
+    lc._onMessage({
+      data: JSON.stringify({ serverContent: { modelTurn: { parts: [{ text: "x" }] } } }),
+    });
+    expect(calls.translation).toEqual([]);
   });
 });
 
