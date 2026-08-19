@@ -28,11 +28,11 @@ const LIVE_MODELS = [
   },
 ];
 
-// 議事録くんは書き起こし専用（応答抑制した通常 Live モデル）で固定
+// 議事録くんの書き起こし Live モデル（翻訳くんと同じ安定稼働する v1alpha モデルの入力書き起こしを使用）
 const MINUTES_LIVE = {
-  id: "gemini-3.1-flash-live-preview",
-  clientMode: "transcribe",
-  apiVersion: "v1beta",
+  id: "gemini-3.5-live-translate-preview",
+  clientMode: "translate",
+  apiVersion: "v1alpha",
 };
 
 // 翻訳先言語の単一情報源（ソース言語はモデルが自動検出するため指定不要）。
@@ -308,8 +308,9 @@ async function startSession() {
       }
       state.fullSource = (state.fullSource + t).slice(-FULL_LOG_MAX_CHARS);
     },
-    // 議事録くん（transcribe モード）では翻訳が届かないため呼ばれない
+    // 議事録くんでは翻訳テキストを使わず、原文の書き起こしのみを使用
     onTranslation: (t) => {
+      if (isMinutes) return;
       appendStream(el.translation, t);
       state.summarizer.feed(t);
       state.fullTranslation = (state.fullTranslation + t).slice(-FULL_LOG_MAX_CHARS);
