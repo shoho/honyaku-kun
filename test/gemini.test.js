@@ -74,6 +74,87 @@ describe("updateMinutes", () => {
     await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow("429");
   });
 
+  it("400 エラーでトークン超過メッセージが含まれる場合、詳細なエラーメッセージを投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { code: 400, message: "Request payload size exceeds the limit: 120000 tokens", status: "INVALID_ARGUMENT" },
+        }),
+        { status: 400 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "Context too long / token limit exceeded (400)"
+    );
+  });
+
+  it("403 / 401 エラー時に API key invalid or unauthorized を投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: { code: 403, message: "API key not valid", status: "PERMISSION_DENIED" } }),
+        { status: 403 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "API key invalid or unauthorized (403)"
+    );
+  });
+
+  it("500 エラー時に Gemini server error を投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: { code: 500, message: "Internal error", status: "INTERNAL" } }),
+        { status: 500 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "Gemini server error (500)"
+    );
+  });
+
+  it("finishReason が MAX_TOKENS の場合に Output token limit reached を投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"sections":' }] } }],
+        }),
+        { status: 200 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "Output token limit reached (MAX_TOKENS)"
+    );
+  });
+
+  it("finishReason が SAFETY の場合に Response blocked by safety filter を投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          candidates: [{ finishReason: "SAFETY", content: { parts: [] } }],
+        }),
+        { status: 200 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "Response blocked by safety filter (SAFETY)"
+    );
+  });
+
+  it("promptFeedback.blockReason がある場合に Prompt blocked を投げる", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          promptFeedback: { blockReason: "SAFETY" },
+          candidates: [],
+        }),
+        { status: 200 }
+      )
+    );
+    await expect(updateMinutes({ apiKey: API_KEY, transcript: "x" })).rejects.toThrow(
+      "Prompt blocked by filter (SAFETY)"
+    );
+  });
+
   it("モデルが不正 JSON を返したら例外", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -114,6 +195,30 @@ describe("finalizeMinutes", () => {
     expect(prompt).toContain("FINAL");
     expect(prompt).toContain("full transcript");
     expect(prompt).toContain("■ Live");
+  });
+
+  it("high 推論で MAX_TOKENS / malformed JSON が起きた場合、thinkingLevel medium で自動リトライする", async () => {
+    const successSections = [{ topic: "Final", points: ["recovered"] }];
+    // 1回目: MAX_TOKENS
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"sections":' }] } }],
+        }),
+        { status: 200 }
+      )
+    );
+    // 2回目: 成功
+    fetchMock.mockResolvedValueOnce(geminiResponse({ sections: successSections }));
+
+    const res = await finalizeMinutes({
+      apiKey: API_KEY,
+      transcript: "full transcript",
+    });
+    expect(res).toEqual(successSections);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(retryBody.generationConfig.thinkingConfig.thinkingLevel).toBe("medium");
   });
 });
 

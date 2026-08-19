@@ -1,7 +1,12 @@
 import { AudioPipeline } from "./audio.js";
 import { LiveClient } from "./live-client.js";
 import { Summarizer } from "./summarizer.js";
-import { finalizeMinutes, SUMMARY_MODELS, SUMMARY_MODEL } from "./gemini.js";
+import {
+  finalizeMinutes,
+  formatMinutesError,
+  SUMMARY_MODELS,
+  SUMMARY_MODEL,
+} from "./gemini.js";
 
 // 翻訳くんで選択可能な Live モデル（不正な値は Google 側でエラーになるだけ）。
 // clientMode / apiVersion は LiveClient にそのまま渡す:
@@ -208,9 +213,14 @@ function populateLangSelects() {
   el.target.value = "ja";
 }
 
-function setStatus(kind, text = STATUS_TEXT[kind] ?? kind) {
+function setStatus(kind, text = STATUS_TEXT[kind] ?? kind, title = "") {
   el.status.className = `status status--${kind}`;
   el.status.textContent = text;
+  if (title) {
+    el.status.title = title;
+  } else {
+    el.status.removeAttribute("title");
+  }
 }
 
 // セッション中は設定類（API キー・タブ含む）を変更不可にする。開始/停止で対で呼ぶ
@@ -268,7 +278,10 @@ async function startSession() {
     },
     onError: (e) => {
       console.warn("[summarize]", e);
-      if (state.running) setStatus("error", "Minutes update failed — will retry");
+      if (state.running) {
+        const { short, full } = formatMinutesError(e, { isRetryable: true });
+        setStatus("error", short, full);
+      }
     },
   });
 
@@ -433,10 +446,18 @@ el.finalizeBtn.addEventListener("click", async () => {
   el.finalizeBtn.disabled = true;
   el.finalizeBtn.textContent = "Generating…";
   try {
-    // state.apiKey はこのボタンが見える時点で必ず設定済み（startSession で固定）
+    const apiKey = currentApiKey() || state.apiKey;
+    const model = el.summaryModel.value || state.summaryModel;
+    if (!apiKey) {
+      setStatus("error", "Enter your Gemini API key first");
+      el.apiKey.classList.add("field-input--missing");
+      el.apiKey.focus();
+      return;
+    }
+
     const sections = await finalizeMinutes({
-      apiKey: state.apiKey,
-      model: state.summaryModel,
+      apiKey,
+      model,
       mode: isMinutes ? "transcript" : "translation",
       targetName: isMinutes ? null : LANG_NAMES[state.targetLang],
       sections: state.lastSections,
@@ -448,15 +469,22 @@ el.finalizeBtn.addEventListener("click", async () => {
       renderSummary(sections, { final: true });
       el.copySummary.hidden = false;
       el.finalizeBtn.textContent = "Final ✓";
+      el.finalizeBtn.removeAttribute("title");
     } else {
       throw new Error("empty sections");
     }
   } catch (e) {
     console.warn("[finalize]", e);
-    el.finalizeBtn.textContent = "Failed — try again";
+    const { short, full } = formatMinutesError(e, { isRetryable: false, isFinal: true });
+    setStatus("error", short, full);
+    el.finalizeBtn.title = full;
+    el.finalizeBtn.textContent = "Failed (see status) ✕";
   } finally {
     el.finalizeBtn.disabled = false;
-    setTimeout(() => (el.finalizeBtn.textContent = FINALIZE_LABEL), 2000);
+    setTimeout(() => {
+      el.finalizeBtn.textContent = FINALIZE_LABEL;
+      el.finalizeBtn.removeAttribute("title");
+    }, 4000);
   }
 });
 
