@@ -193,6 +193,28 @@ describe("LiveClient の再接続", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it("サーバーから msg.error が届いたら即座に onError を呼ぶ", () => {
+    const { lc, calls } = makeClient();
+    lc._onMessage({
+      data: JSON.stringify({ error: { code: 400, message: "Invalid model name" } }),
+    });
+    expect(calls.errors[0].message).toContain("Invalid model name");
+  });
+
+  it("サーバーから msg.goAway が届いたら onError を呼ぶ", () => {
+    const { lc, calls } = makeClient();
+    lc._onMessage({
+      data: JSON.stringify({ goAway: { reason: "Session limit exceeded" } }),
+    });
+    expect(calls.errors[0].message).toContain("Session limit exceeded");
+  });
+
+  it("未接続切断時に e.reason があればエラーメッセージに反映する", () => {
+    const { lc, calls } = makeClient();
+    lc._onClose({ code: 1007, reason: "API key not valid. Please pass a valid API key." });
+    expect(calls.errors[0].message).toContain("API key not valid");
+  });
+
   it("一度も接続が成立していなければ即エラーにして再接続しない（キー不正の典型）", () => {
     const { lc, calls } = makeClient();
     lc.connect = vi.fn();

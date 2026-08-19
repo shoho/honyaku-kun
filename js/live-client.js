@@ -78,9 +78,11 @@ export class LiveClient {
     this._reconnectTimer = null;
     this._decoder = new TextDecoder();
     this._turnHadText = false;  // translate-text: ターン区切りの改行を入れるかの判定
+    this._lastErrorText = null; // サーバーから届いたエラーや切断理由
   }
 
   connect() {
+    this._lastErrorText = null;
     this.onStatus?.("connecting", this.reconnectAttempts ? "Reconnecting…" : undefined);
 
     const url =
@@ -104,12 +106,16 @@ export class LiveClient {
       this.onStatus?.("idle");
       return;
     }
-    // 一度も接続が成立していない → キー不正・モデル名不正・回線断のいずれか
-    // （ブラウザには close code 1006 しか届かず区別できない）。
-    // 再接続でリカバーできないので即エラーにし、エラー表示を残す
-    // （ここで idle を流すと app.js の error 表示が即座に上書きされてしまう）。
+    // 一度も接続が成立していない → キー不正・モデル名不正・回線断・リファラ制限のいずれか
     if (!this.everReady) {
-      this.onError?.(new Error("Connection failed — check your Gemini API key and network"));
+      const reasonText = this._lastErrorText || (e.reason ? String(e.reason).trim() : "");
+      let msg = "Connection failed — check your Gemini API key and network";
+      if (reasonText) {
+        msg = `Connection failed: ${reasonText}`;
+      } else if (e.code === 1006) {
+        msg = "Connection failed — check your API key (ensure no HTTP Referrer restrictions) and network";
+      }
+      this.onError?.(new Error(msg));
       return;
     }
     // 異常切断 → 指数バックオフで自動再接続（セッション再開ハンドル付き）
@@ -129,7 +135,7 @@ export class LiveClient {
       // 文字起こしは setup 直下（generationConfig 内に置くと API に拒否される）
       inputAudioTranscription: {},
       // 再開ハンドルがあれば前回セッションの文脈を引き継ぐ
-      sessionResumption: this.resumeHandle ? { handle: this.resumeHandle } : {},
+      ...(this.resumeHandle ? { sessionResumption: { handle: this.resumeHandle } } : {}),
     };
 
     const setup =
@@ -185,6 +191,20 @@ export class LiveClient {
 
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
+
+    if (msg.error) {
+      const errMsg = msg.error.message || JSON.stringify(msg.error);
+      this._lastErrorText = errMsg;
+      this.onError?.(new Error(`Live API error: ${errMsg}`));
+      return;
+    }
+
+    if (msg.goAway) {
+      const reason = msg.goAway.reason || "Server terminated session";
+      this._lastErrorText = reason;
+      this.onError?.(new Error(`Live session closed: ${reason}`));
+      return;
+    }
 
     if (msg.setupComplete) {
       this.ready = true;
